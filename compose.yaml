@@ -1,0 +1,124 @@
+name: incident-operations-platform
+
+services:
+  postgres:
+    image: postgres:18.4-alpine3.24@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+    environment:
+      POSTGRES_DB: incident_operations
+      POSTGRES_USER: incident_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_only_change_me}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U incident_app -d incident_operations']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    networks: [backend]
+
+  redis:
+    image: redis:8.8.1-alpine3.23
+    command: ['redis-server', '--appendonly', 'yes', '--save', '60', '1']
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    networks: [backend]
+
+  migrate:
+    build:
+      context: .
+      target: production
+    command: ['node', 'dist/db/migrate.js']
+    environment: &application-environment
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: postgresql://incident_app:${POSTGRES_PASSWORD:-local_only_change_me}@postgres:5432/incident_operations
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SLA_TIME_FACTOR: ${SLA_TIME_FACTOR:-1}
+      QUEUE_CONCURRENCY: ${QUEUE_CONCURRENCY:-5}
+      OUTBOX_POLL_INTERVAL_MS: ${OUTBOX_POLL_INTERVAL_MS:-5000}
+      ESCALATION_ATTEMPTS: ${ESCALATION_ATTEMPTS:-5}
+      ESCALATION_BACKOFF_MS: ${ESCALATION_BACKOFF_MS:-2000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+    restart: 'no'
+
+  api:
+    build:
+      context: .
+      target: production
+    environment:
+      <<: *application-environment
+      HOST: 0.0.0.0
+      PORT: 3000
+    ports:
+      - '${APP_PORT:-3000}:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 8
+      start_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    restart: unless-stopped
+    networks: [edge, backend]
+
+  worker:
+    build:
+      context: .
+      target: production
+    command: ['node', 'dist/worker.js']
+    environment: *application-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '-e', 'process.kill(1, 0)']
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    restart: unless-stopped
+    networks: [backend]
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  edge:
+  backend:
+    internal: true

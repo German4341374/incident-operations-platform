@@ -1,0 +1,150 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: TypeScript, integration, and load smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.4-alpine3.24@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+        env:
+          POSTGRES_DB: incident_operations_test
+          POSTGRES_USER: incident_app
+          POSTGRES_PASSWORD: local_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U incident_app -d incident_operations_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+      redis:
+        image: redis:8.8.1-alpine3.23
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      LOG_LEVEL: silent
+      DATABASE_URL: postgresql://incident_app:local_test_only@127.0.0.1:5432/incident_operations_test
+      REDIS_URL: redis://127.0.0.1:6379
+      TEST_DATABASE_URL: postgresql://incident_app:local_test_only@127.0.0.1:5432/incident_operations_test
+      TEST_REDIS_URL: redis://127.0.0.1:6379
+    steps:
+      - name: Check out source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Configure Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.14.1
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Run formatting, lint, typecheck, and tests
+        run: npm run check
+
+      - name: Build production JavaScript
+        run: npm run build
+
+      - name: Prepare database
+        run: npm run migrate
+
+      - name: Start API and worker
+        run: |
+          node dist/server.js > api.log 2>&1 &
+          echo $! > api.pid
+          node dist/worker.js > worker.log 2>&1 &
+          echo $! > worker.pid
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:3000/ready && break
+            sleep 1
+          done
+          curl --fail --show-error http://127.0.0.1:3000/ready
+
+      - name: Run API load smoke test
+        env:
+          CI: 'true'
+        run: npm run load:smoke
+
+      - name: Stop background processes
+        if: always()
+        run: |
+          test ! -f api.pid || kill "$(cat api.pid)" || true
+          test ! -f worker.pid || kill "$(cat worker.pid)" || true
+
+      - name: Upload coverage, load results, and logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-evidence
+          path: |
+            coverage/
+            artifacts/load-smoke.json
+            api.log
+            worker.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  container:
+    name: Docker Compose smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Configure Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Build production image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          target: production
+          push: false
+          tags: incident-operations-platform:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start stack and wait for health checks
+        run: docker compose up --build --wait
+
+      - name: Verify containerized API and OpenAPI document
+        run: |
+          curl --fail --show-error --silent http://127.0.0.1:3000/ready | grep '"status":"ready"'
+          curl --fail --show-error --silent http://127.0.0.1:3000/docs/json | grep 'Incident Operations Platform API'
+          curl --fail --show-error --silent http://127.0.0.1:3000/api/dashboard | grep '"total"'
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down --volumes --remove-orphans
