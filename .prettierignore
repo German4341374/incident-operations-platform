@@ -1,0 +1,6 @@
+node_modules
+dist
+coverage
+artifacts
+package-lock.json
+docs/load-test-results.md

@@ -1,0 +1,56 @@
+{
+  "name": "incident-operations-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Compact IT incident operations platform with SLA escalation workflows.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "overrides": {
+    "cron-parser": "5.7.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage",
+    "dev": "tsx watch src/server.ts",
+    "dev:worker": "tsx watch src/worker.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "migrate": "tsx src/db/migrate.ts",
+    "seed": "tsx src/db/seed.ts",
+    "start": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
+    "demo:scenario": "tsx scripts/demo-scenario.ts",
+    "load:smoke": "tsx scripts/load-smoke.ts"
+  },
+  "dependencies": {
+    "@fastify/helmet": "13.1.0",
+    "@fastify/static": "10.1.2",
+    "@fastify/swagger": "9.8.1",
+    "@fastify/swagger-ui": "6.1.1",
+    "bullmq": "6.0.5",
+    "dotenv": "17.4.2",
+    "fastify": "5.11.0",
+    "ioredis": "6.0.0",
+    "pg": "8.22.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.10.13",
+    "@types/pg": "8.20.3",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "10.8.0",
+    "prettier": "3.9.6",
+    "tsx": "4.23.4",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
+  }
+}

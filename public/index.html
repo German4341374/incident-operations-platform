@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Incident Operations Platform administration console" />
+    <title>Incident Operations</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">OPERATIONS CONSOLE</p>
+        <h1>Incident Operations</h1>
+      </div>
+      <div class="topbar-actions">
+        <span id="readiness" class="health-pill">Checking dependencies…</span>
+        <a class="button secondary" href="/docs" target="_blank" rel="noreferrer">OpenAPI</a>
+      </div>
+    </header>
+
+    <main>
+      <section id="metrics" class="metrics" aria-label="Incident metrics"></section>
+
+      <section class="workspace">
+        <aside class="panel incidents-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">LIVE QUEUE</p>
+              <h2>Incidents</h2>
+            </div>
+            <button id="new-incident-button" class="button">New incident</button>
+          </div>
+
+          <form id="filters" class="filters">
+            <input
+              id="query"
+              name="query"
+              type="search"
+              placeholder="Search title or description"
+            />
+            <select id="priority-filter" name="priority">
+              <option value="">All priorities</option>
+              <option>P1</option>
+              <option>P2</option>
+              <option>P3</option>
+              <option>P4</option>
+            </select>
+            <select id="status-filter" name="status">
+              <option value="">All statuses</option>
+              <option>Open</option>
+              <option>Investigating</option>
+              <option>Mitigating</option>
+              <option>Monitoring</option>
+              <option>Resolved</option>
+              <option>Closed</option>
+            </select>
+            <button class="button secondary" type="submit">Apply</button>
+          </form>
+          <div id="incident-list" class="incident-list" aria-live="polite"></div>
+        </aside>
+
+        <section id="detail-panel" class="panel detail-panel">
+          <div class="empty-state">
+            <div class="empty-icon">IO</div>
+            <h2>Select an incident</h2>
+            <p>Review SLA deadlines, change ownership, collaborate, and inspect the audit trail.</p>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="create-dialog">
+      <form id="create-form" class="dialog-form">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">REGISTER</p>
+            <h2>New incident</h2>
+          </div>
+          <button id="close-dialog" class="icon-button" type="button" aria-label="Close">×</button>
+        </div>
+        <label>Title<input name="title" minlength="5" maxlength="200" required /></label>
+        <label
+          >Description<textarea
+            name="description"
+            minlength="10"
+            maxlength="10000"
+            required
+          ></textarea>
+        </label>
+        <div class="form-row">
+          <label
+            >Priority<select name="priority" required>
+              <option>P1</option>
+              <option>P2</option>
+              <option selected>P3</option>
+              <option>P4</option>
+            </select></label
+          >
+          <label>Reported by<input name="reportedBy" value="Operations Desk" required /></label>
+        </div>
+        <p id="create-error" class="form-error" role="alert"></p>
+        <button class="button" type="submit">Create incident</button>
+      </form>
+    </dialog>
+
+    <template id="detail-template">
+      <div class="detail-content">
+        <div class="detail-header">
+          <div>
+            <div class="badge-row">
+              <span data-field="priority"></span><span data-field="status"></span>
+            </div>
+            <p data-field="number" class="incident-number"></p>
+            <h2 data-field="title"></h2>
+            <p data-field="description" class="description"></p>
+          </div>
+          <span data-field="version" class="version-pill"></span>
+        </div>
+        <div class="sla-grid">
+          <article>
+            <span>First response</span><strong data-field="firstResponseDeadline"></strong>
+          </article>
+          <article>
+            <span>Resolution</span><strong data-field="resolutionDeadline"></strong>
+          </article>
+          <article><span>Assignee</span><strong data-field="assigneeName"></strong></article>
+        </div>
+        <div class="action-grid">
+          <form data-form="update" class="card-form">
+            <h3>Lifecycle</h3>
+            <label>Status<select name="status"></select></label>
+            <label>Engineer<select name="assigneeId"></select></label>
+            <button class="button" type="submit">Save with optimistic lock</button>
+          </form>
+          <form data-form="comment" class="card-form">
+            <h3>Collaboration</h3>
+            <label
+              >Type<select name="type">
+                <option value="comment">Comment</option>
+                <option value="mitigation">Mitigation</option>
+              </select></label
+            >
+            <label>Note<textarea name="body" maxlength="5000" required></textarea></label>
+            <button class="button secondary" type="submit">Add to timeline</button>
+          </form>
+          <form data-form="link" class="card-form">
+            <h3>Similar incident</h3>
+            <label
+              >Incident UUID<input name="relatedIncidentId" placeholder="UUID" required
+            /></label>
+            <button class="button secondary" type="submit">Link incident</button>
+          </form>
+        </div>
+        <p data-field="error" class="form-error" role="alert"></p>
+        <div class="timeline-heading">
+          <h3>Timeline</h3>
+          <button data-action="audit" class="text-button">View audit log</button>
+        </div>
+        <div data-field="timeline" class="timeline"></div>
+      </div>
+    </template>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
