@@ -6,6 +6,7 @@ import helmet from '@fastify/helmet';
 import fastifyStatic from '@fastify/static';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
+import type { FastifyInstance } from 'fastify';
 import type { Redis } from 'ioredis';
 import type { Pool } from 'pg';
 import { ZodError, z } from 'zod';
@@ -77,6 +78,70 @@ const incidentBodyJsonSchema = {
   },
 } as const;
 
+function configureErrorHandling(app: FastifyInstance): void {
+  app.setErrorHandler((error, request, reply) => {
+    if (error instanceof InvalidTransitionError) {
+      const conflict = new ConflictError(error.message, { from: error.from, to: error.to });
+      return reply.code(conflict.statusCode).send({
+        error: {
+          code: conflict.code,
+          message: conflict.message,
+          details: conflict.details,
+          requestId: request.id,
+        },
+      });
+    }
+    if (error instanceof ZodError) {
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Request validation failed',
+          details: error.issues,
+          requestId: request.id,
+        },
+      });
+    }
+    if (error instanceof ApplicationError) {
+      return reply.code(error.statusCode).send({
+        error: {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          requestId: request.id,
+        },
+      });
+    }
+    if (typeof error === 'object' && error !== null && 'validation' in error && error.validation) {
+      const validationError = error as { message?: unknown; validation: unknown };
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message:
+            typeof validationError.message === 'string'
+              ? validationError.message
+              : 'Request validation failed',
+          details: validationError.validation,
+          requestId: request.id,
+        },
+      });
+    }
+    request.log.error({ err: error }, 'request failed');
+    return reply.code(500).send({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+        requestId: request.id,
+      },
+    });
+  });
+
+  app.setNotFoundHandler((request, reply) =>
+    reply.code(404).send({
+      error: { code: 'NOT_FOUND', message: 'Route was not found', requestId: request.id },
+    }),
+  );
+}
+
 export interface BuildAppOptions {
   config: AppConfig;
   pool: Pool;
@@ -127,6 +192,7 @@ export async function buildApp(options: BuildAppOptions) {
   });
   await app.register(swaggerUi, { routePrefix: '/docs' });
   await app.register(helmet, { contentSecurityPolicy: false });
+  configureErrorHandling(app);
 
   const repository = new IncidentRepository(options.pool);
   const escalationRepository = new EscalationRepository(options.pool);
@@ -368,68 +434,6 @@ export async function buildApp(options: BuildAppOptions) {
 
   const publicDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
   await app.register(fastifyStatic, { root: publicDirectory, prefix: '/' });
-
-  app.setErrorHandler((error, request, reply) => {
-    if (error instanceof InvalidTransitionError) {
-      const conflict = new ConflictError(error.message, { from: error.from, to: error.to });
-      return reply.code(conflict.statusCode).send({
-        error: {
-          code: conflict.code,
-          message: conflict.message,
-          details: conflict.details,
-          requestId: request.id,
-        },
-      });
-    }
-    if (error instanceof ZodError) {
-      return reply.code(400).send({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Request validation failed',
-          details: error.issues,
-          requestId: request.id,
-        },
-      });
-    }
-    if (error instanceof ApplicationError) {
-      return reply.code(error.statusCode).send({
-        error: {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          requestId: request.id,
-        },
-      });
-    }
-    if (typeof error === 'object' && error !== null && 'validation' in error && error.validation) {
-      const validationError = error as { message?: unknown; validation: unknown };
-      return reply.code(400).send({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message:
-            typeof validationError.message === 'string'
-              ? validationError.message
-              : 'Request validation failed',
-          details: validationError.validation,
-          requestId: request.id,
-        },
-      });
-    }
-    request.log.error({ err: error }, 'request failed');
-    return reply.code(500).send({
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-        requestId: request.id,
-      },
-    });
-  });
-
-  app.setNotFoundHandler((request, reply) =>
-    reply.code(404).send({
-      error: { code: 'NOT_FOUND', message: 'Route was not found', requestId: request.id },
-    }),
-  );
 
   if (managedDispatcher && options.startDispatcher !== false) managedDispatcher.start();
   if (managedDispatcher) {

@@ -20,7 +20,7 @@ integration('incident API with PostgreSQL and Redis', () => {
     NODE_ENV: 'test',
     HOST: '127.0.0.1',
     PORT: 3000,
-    LOG_LEVEL: 'error',
+    LOG_LEVEL: 'silent',
     DATABASE_URL: databaseUrl ?? '',
     REDIS_URL: redisUrl ?? '',
     QUEUE_CONCURRENCY: 2,
@@ -40,7 +40,7 @@ integration('incident API with PostgreSQL and Redis', () => {
       pool,
       redis,
       dispatcher,
-      logger: true,
+      logger: false,
       startDispatcher: false,
     });
     await app.ready();
