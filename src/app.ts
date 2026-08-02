@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
@@ -94,7 +95,18 @@ export async function buildApp(options: BuildAppOptions) {
             level: options.config.LOG_LEVEL,
             redact: ['req.headers.authorization', 'req.headers.cookie'],
           },
-    requestIdHeader: 'x-request-id',
+    genReqId: (request) => {
+      const supplied = request.headers['x-request-id'];
+      if (
+        typeof supplied === 'string' &&
+        supplied.length >= 8 &&
+        supplied.length <= 100 &&
+        /^[a-zA-Z0-9._-]+$/.test(supplied)
+      ) {
+        return supplied;
+      }
+      return randomUUID();
+    },
     trustProxy: false,
     bodyLimit: 1_048_576,
   });
