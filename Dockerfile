@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM node:24.14.1-alpine3.23 AS dependencies
+FROM node:26.5.0-alpine3.23 AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
@@ -9,13 +9,13 @@ COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN npm run build
 
-FROM node:24.14.1-alpine3.23 AS production-dependencies
+FROM node:26.5.0-alpine3.23 AS production-dependencies
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force
 
-FROM node:24.14.1-alpine3.23 AS production
+FROM node:26.5.0-alpine3.23 AS production
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
