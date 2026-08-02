@@ -20,7 +20,7 @@ integration('incident API with PostgreSQL and Redis', () => {
     NODE_ENV: 'test',
     HOST: '127.0.0.1',
     PORT: 3000,
-    LOG_LEVEL: 'silent',
+    LOG_LEVEL: 'error',
     DATABASE_URL: databaseUrl ?? '',
     REDIS_URL: redisUrl ?? '',
     QUEUE_CONCURRENCY: 2,
@@ -40,7 +40,7 @@ integration('incident API with PostgreSQL and Redis', () => {
       pool,
       redis,
       dispatcher,
-      logger: false,
+      logger: true,
       startDispatcher: false,
     });
     await app.ready();
@@ -121,7 +121,7 @@ integration('incident API with PostgreSQL and Redis', () => {
       headers: { 'if-match': '"1"', 'x-actor': 'Engineer B' },
       payload: { status: 'Resolved' },
     });
-    expect(stale.statusCode).toBe(409);
+    expect(stale.statusCode, stale.body).toBe(409);
     expect(stale.json().error.details).toMatchObject({ expectedVersion: 1, currentVersion: 2 });
   });
 
@@ -133,7 +133,7 @@ integration('incident API with PostgreSQL and Redis', () => {
       headers: { 'if-match': '1' },
       payload: { status: 'Closed' },
     });
-    expect(response.statusCode).toBe(409);
+    expect(response.statusCode, response.body).toBe(409);
     expect(response.json().error.message).toContain('Open to Closed');
   });
 
@@ -186,7 +186,10 @@ integration('incident API with PostgreSQL and Redis', () => {
       [incident.id],
     );
     await pool.query(
-      "UPDATE incidents SET resolution_deadline = clock_timestamp() - interval '1 minute' WHERE id = $1",
+      `UPDATE incidents
+          SET first_response_deadline = clock_timestamp() - interval '2 minutes',
+              resolution_deadline = clock_timestamp() - interval '1 minute'
+        WHERE id = $1`,
       [incident.id],
     );
     const pastDeadline = await pool.query<{ resolution_deadline: Date }>(
