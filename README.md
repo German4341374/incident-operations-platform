@@ -4,9 +4,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Node.js 24](https://img.shields.io/badge/Node.js-24-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 
-Incident Operations Platform is a compact incident-management system for an operations or technical-support team. It keeps the incident record, collaboration timeline, immutable audit trail, SLA deadlines, and queue-driven escalations in one reproducible local stack.
+Keep an incident's updates in one place: what broke, who's working on it, what has been tried,
+and when a response or resolution is due. Engineers can add comments, link related incidents,
+and follow the timeline from Open to Closed.
 
-The project deliberately focuses on incident operations. It does not implement customer accounts, chat, paging vendors, or a distributed microservice topology.
+PostgreSQL stores the records and history. Redis and BullMQ handle scheduled escalations.
+The local demo includes a P1 incident you can take through the workflow.
 
 ## Features
 
